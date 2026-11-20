@@ -10,7 +10,20 @@ The sibling collected the data and built an item-level keyword filter (tiers). I
 co-occur. This project requires a **link** between R and G (R ∧ G ∧ T), validates it against human labels, and
 compares a rule baseline with a local LLM. Its tables are read **read-only**, never copied (`data/SOURCE.md`, MD5 checked).
 
-## Design (decided by the user, 2026-11-02; don't reopen unless the user asks)
+## Current methodology (changed by the user, 2026-11-11): read `docs/methodology_chatgpt_screening.md` first
+
+- Kept: data, Step 1, rules_v1 and its 4 groups. Only the **61 HIGH_PRIORITY items** are analysed now.
+- Each whole conversation (`data/chatgpt/huggingface__transformers/high_priority_v1/threads/`) goes with
+  `prompt.txt` (v2, 2026-11-18) to **ChatGPT, manually, one new chat per item**. One JSON answer: `tradeoff_present`,
+  then a `tradeoffs` array (several per item; distinct = decision × pair of objectives), each with an RQ1 open code,
+  RQ2 justifications (per argument), RQ3 disagreement/negotiation/resolution, all with {comment_id, quote} evidence.
+  Answers go into `results.xlsx`; the researcher checks every item; open codes → taxonomy (open → axial coding).
+- `prompt.txt` is **not** in the code: re-running `export_chatgpt.py` would overwrite it. v1 (never run) is kept as
+  `prompt_v1_2026-11-09.txt`.
+- Set aside (files kept): the 200-item pilot, two raters, κ, weighted P/R/F1, dev/test, local-LLM evaluation.
+  The sections below describe that earlier design.
+
+## Earlier design (decided by the user, 2026-11-02)
 
 - **Data: Transformers only for now**: the sibling's 10,000 newest issues/PRs of `huggingface/transformers` created
   before 2026-09-01. Code is repo-agnostic (`--repo owner__name`); DeepSpeed and Megatron-LM come later.
@@ -66,6 +79,7 @@ compares a rule baseline with a local LLM. Its tables are read **read-only**, ne
 | `src/sample_pilot.py` | Step 6a → `annotation/pilot_v1/` sample.csv (hidden key), threads/, rater_1.xlsx, rater_2.xlsx (labels, episodes, codebook sheets), codebook.md. Refuses to overwrite rater sheets |
 | `src/agreement.py` | Step 6b → agreement.json (κ), adjudication.xlsx; `--finalize` → gold.csv, gold_episodes.csv; `--selftest` on fake labels in `runs/selftest/` |
 | `src/llm_screen.py` | Step 5 (LLM venv) → `runs/<time>_llm_<model>/` predictions.parquet (+ evidence check), prompt.txt, config.json, log.txt |
+| `src/export_chatgpt.py` | One rule group (default HIGH) in items.csv order for manual ChatGPT screening → `data/chatgpt/<repo>/<group>_<v>/` threads/<order>_<item>.md (render_thread), prompt.txt (local LLM prompt + `last_turn_id` check), index.csv, results.xlsx (never overwritten) |
 | `src/evaluate.py` | Step 6c → `reports/evaluation_<split>.json`, `errors_<split>.csv`: rules_high/any, llm_yes(/uncertain), hybrid; sample and design-weighted P/R/F1 with bootstrap CIs |
 | `src/extract_episodes.py` | Step 7: `--confirm-sheet --detector …` → `annotation/confirm_v1/`; then → `data/episodes/episodes.csv`, `episode_turns.parquet` |
 | `src/report.py` | `reports/pipeline_report.md`: funnel, κ, metrics, episodes |
@@ -105,6 +119,8 @@ compares a rule baseline with a local LLM. Its tables are read **read-only**, ne
   - Between the two runs one other answer flipped (#47874 yes → no) despite temperature 0: vLLM's batching is not
     bit-deterministic. Report LLM results from one fixed run; don't mix runs.
   - vLLM start-up needs `VLLM_USE_FLASHINFER_SAMPLER=0` (FlashInfer JIT needs ninja + nvcc); `llm_screen.py` sets it.
-- [ ] **Waiting for people:** two raters label 200 items → `agreement.py` → adjudicate → `--finalize` →
+- [x] ChatGPT export of the 61 HIGH conversations + four-step prompt (`data/chatgpt/.../high_priority_v1/`).
+- [ ] **Now:** ChatGPT runs on the 61 items → checks + researcher review → open coding (RQ1) and RQ2/RQ3 coding.
+- [ ] (Set aside, earlier path) two raters label 200 items → `agreement.py` → adjudicate → `--finalize` →
   `evaluate.py` (dev) → revise rules (v2) / prompt → `evaluate.py --split test` once → LLM on `--items pool` →
   `extract_episodes.py --confirm-sheet` → confirm → `extract_episodes.py` → `report.py`.

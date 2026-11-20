@@ -3,3 +3,8 @@
 __pycache__/
 runs/
 data/
+.env
+.env.*
+!.env.example
+*.parquet
+*.csv
