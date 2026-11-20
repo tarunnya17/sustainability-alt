@@ -79,6 +79,24 @@ Run every command from the project folder. ✅ means the step is done and its ou
 
 Each script has `--help`, and its first lines explain what it reads and writes.
 
+### The full dataset: all three repos (Steps 1-4 only)
+
+Every issue and PR created before 2026-09-01 in `huggingface/transformers`, `deepspeedai/DeepSpeed` (the repo
+moved from `microsoft/`) and `NVIDIA/Megatron-LM`. It lives in `data/full/`, apart from the 10k data, so nothing above
+changes. One detached job collects the data and runs Steps 1-4:
+
+```bash
+setsid nohup bash src/run_full.sh > /dev/null 2>&1 &    # several hours; resumable: run it again after a stop
+tail -f data/full/run_full.log                          # progress
+kill $(cat data/full/pid)                               # stop
+```
+
+It runs the sibling's collector (code unchanged) with `--max-items 0 --until 2026-09-01 --out data/full`, then
+`prepare_threads.py` and `detect_rules.py` with `--dataset full` for each repo, then `combine_groups.py`:
+`data/full/detect/rules_v1/all_repos/items.csv` (all items with their group) and `summary.json` (groups per repo).
+`combine_groups.py --bot-candidates` lists accounts with ≥ 50 comments that GitHub does not mark as bots; confirmed
+bots go into `KNOWN_BOTS` in `src/common.py`, and then Steps 1-4 run again.
+
 ### Check that the scripts work, without real labels
 
 ```bash
@@ -119,6 +137,8 @@ annotation/confirm_v1/    Step 7: confirm_sheet.xlsx + threads/
 runs/                     LLM runs (one folder each) and the self-test
 reports/                  evaluation_<split>.json, errors_<split>.csv, pipeline_report.md
 data/episodes/            Step 7: episodes.csv, episode_turns.parquet, summary.json
+data/full/                the full dataset of the three repos (src/run_full.sh):
+                          raw/ and tables/ (collector), threads/, detect/rules_v1/<repo>/ and all_repos/
 ```
 
 ## Rules that protect the results

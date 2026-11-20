@@ -5,9 +5,10 @@ related comments.
 
     .venv/bin/python src/detect_rules.py                 # writes data/detect/rules_v1/
     .venv/bin/python src/detect_rules.py --version v2    # after editing lexicon.py
+    .venv/bin/python src/detect_rules.py --dataset full --repo NVIDIA__Megatron-LM   # writes data/full/detect/
 
-Input : data/threads/<repo>/turns.parquet (Step 1)
-Output: data/detect/rules_<version>/<repo>/
+Input : data/threads/<repo>/turns.parquet (Step 1; data/full/threads/ with --dataset full)
+Output: data/detect/rules_<version>/<repo>/ (data/full/detect/rules_<version>/<repo>/ with --dataset full)
           hits.parquet   one row per keyword hit (unit, sentence, group, term, matched text, active?)
           links.parquet  one row per R-G link (kind, explicit?, groups, speed role, units, authors, evidence)
           items.csv      one row per issue/PR: group, framing, link counts, score, top evidence
@@ -33,7 +34,7 @@ from itertools import product
 
 import pandas as pd
 
-from common import DETECT, REPO, STRATA, SIBLING, load_conversations, load_turns
+from common import DATASETS, REPO, STRATA, SIBLING, detect_dir, load_conversations, load_turns
 from lexicon import EFFECT, GROUPS, compiled_terms
 
 TERMS = compiled_terms()
@@ -190,10 +191,11 @@ def main():
     parser = argparse.ArgumentParser(description="Rule-based trade-off detection (Steps 2-4).")
     parser.add_argument("--repo", default=REPO)
     parser.add_argument("--version", default="v1")
+    parser.add_argument("--dataset", default="10k", choices=DATASETS)
     args = parser.parse_args()
 
-    turns = load_turns(args.repo)
-    conv = load_conversations(args.repo)
+    turns = load_turns(args.repo, args.dataset)
+    conv = load_conversations(args.repo, args.dataset)
     all_hits, all_links, rows = [], [], []
     for number, g in turns.groupby("item_number", sort=True):
         hits, links, info = detect_item(g)
@@ -204,7 +206,7 @@ def main():
     items = conv[["repo", "item_number", "item_type", "title", "url"]].merge(pd.DataFrame(rows), on="item_number", how="left")
     items["group"] = items["group"].fillna("NO_MATCH")  # items with no human text at all
     sibling_scored = SIBLING / "data" / "filtered" / args.repo / "items_scored.csv"
-    if sibling_scored.exists():
+    if sibling_scored.exists() and args.dataset == "10k":  # the sibling's tiers exist only for the 10k items
         tiers = pd.read_csv(sibling_scored, usecols=["item_number", "tier"])
         items = items.merge(tiers.rename(columns={"tier": "sibling_tier"}), on="item_number", how="left")
         items["sibling_tier"] = items["sibling_tier"].fillna("none")
@@ -213,7 +215,7 @@ def main():
     for df in (hits, links):
         df.insert(0, "repo", args.repo)
 
-    out = DETECT / f"rules_{args.version}" / args.repo
+    out = detect_dir(args.dataset) / f"rules_{args.version}" / args.repo
     out.mkdir(parents=True, exist_ok=True)
     hits.to_parquet(out / "hits.parquet", index=False)
     links.to_parquet(out / "links.parquet", index=False)

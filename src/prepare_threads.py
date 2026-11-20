@@ -3,11 +3,15 @@ Step 1: rebuild every issue/PR as a conversation of "turns" (title, opening post
 
     .venv/bin/python src/prepare_threads.py
     .venv/bin/python src/prepare_threads.py --repo huggingface__transformers
+    .venv/bin/python src/prepare_threads.py --dataset full --repo deepspeedai__DeepSpeed
 
-Input : the sibling project's tables (read-only, data/SOURCE.md)
-Output: data/threads/<repo>/turns.parquet          one row per human title / body / comment / review
-        data/threads/<repo>/conversations.parquet  one row per issue/PR (metadata, participants)
-        data/threads/<repo>/summary.json
+Input : --dataset 10k (default): the sibling project's tables (read-only, data/SOURCE.md)
+        --dataset full:          data/full/tables/<repo>/ (collected by src/run_full.sh); their MD5s are written
+                                 to MD5.json there on first use and checked on every later run
+Output: data/threads/<repo>/ (10k) or data/full/threads/<repo>/ (full):
+        turns.parquet          one row per human title / body / comment / review
+        conversations.parquet  one row per issue/PR (metadata, participants)
+        summary.json
 
 Reply structure is taken from the RAW text, because cleaning removes quotes and @mentions:
 - thread_root: first comment of an inline review thread (follows parent_id); otherwise the turn itself
@@ -24,7 +28,7 @@ import re
 import pandas as pd
 
 from clean_text import clean, find_boilerplate, normalize
-from common import SOURCE_MD5, THREADS, is_bot, sibling_tables, split_sentences
+from common import DATASETS, SOURCE_MD5, is_bot, source_tables, split_sentences, threads_dir
 
 MENTION = re.compile(r"(?<![\w.])@([\w-]+)")
 FENCED = re.compile(r"```.*?(```|$)|~~~.*?(~~~|$)", re.S)
@@ -80,12 +84,19 @@ def find_replies(turns):
 def main():
     parser = argparse.ArgumentParser(description="Rebuild conversations (Step 1).")
     parser.add_argument("--repo", default="huggingface__transformers")
+    parser.add_argument("--dataset", default="10k", choices=DATASETS)
     parser.add_argument("--boilerplate-min", type=int, default=20,
                         help="a line in this many different texts is boilerplate (sibling's setting)")
     args = parser.parse_args()
 
-    src = sibling_tables(args.repo)
-    for name, expected in SOURCE_MD5.get(args.repo, {}).items():
+    src = source_tables(args.repo, args.dataset)
+    expected_md5 = SOURCE_MD5.get(args.repo, {})
+    if args.dataset == "full":  # no MD5s known before collection: record them once, check them afterwards
+        md5_file = src / "MD5.json"
+        if not md5_file.exists():
+            md5_file.write_text(json.dumps({n: md5(src / n) for n in ("items.csv", "comments.csv")}, indent=2))
+        expected_md5 = json.loads(md5_file.read_text())
+    for name, expected in expected_md5.items():
         if md5(src / name) != expected:
             raise SystemExit(f"{src / name} changed since data/SOURCE.md was written; check it, then update the MD5.")
     items = pd.read_csv(src / "items.csv")
@@ -133,7 +144,7 @@ def main():
     conv["n_turns"] = conv["item_number"].map(comment_turns.groupby("item_number").size()).fillna(0).astype(int)
     conv["n_human_authors"] = conv["item_number"].map(authors).fillna(0).astype(int)
 
-    out = THREADS / args.repo
+    out = threads_dir(args.dataset) / args.repo
     out.mkdir(parents=True, exist_ok=True)
     turns.to_parquet(out / "turns.parquet", index=False)
     conv.to_parquet(out / "conversations.parquet", index=False)

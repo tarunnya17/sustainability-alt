@@ -79,6 +79,8 @@ compares a rule baseline with a local LLM. Its tables are read **read-only**, ne
 | `src/sample_pilot.py` | Step 6a → `annotation/pilot_v1/` sample.csv (hidden key), threads/, rater_1.xlsx, rater_2.xlsx (labels, episodes, codebook sheets), codebook.md. Refuses to overwrite rater sheets |
 | `src/agreement.py` | Step 6b → agreement.json (κ), adjudication.xlsx; `--finalize` → gold.csv, gold_episodes.csv; `--selftest` on fake labels in `runs/selftest/` |
 | `src/llm_screen.py` | Step 5 (LLM venv) → `runs/<time>_llm_<model>/` predictions.parquet (+ evidence check), prompt.txt, config.json, log.txt |
+| `src/run_full.sh` | The **full dataset** (detached): sibling collector (unchanged) for all 3 repos, every item before 2026-09-01 → `data/full/raw`, `tables`; then Steps 1-4 with `--dataset full`; retries from checkpoints while attempts make progress |
+| `src/combine_groups.py` | `--dataset full`: the 3 repos' items.csv stacked → `data/full/detect/rules_v1/all_repos/` items.csv + summary.json (groups × repo); `--bot-candidates` → `data/full/bot_candidates.csv` |
 | `src/export_chatgpt.py` | One rule group (default HIGH) in items.csv order for manual ChatGPT screening → `data/chatgpt/<repo>/<group>_<v>/` threads/<order>_<item>.md (render_thread), prompt.txt (local LLM prompt + `last_turn_id` check), index.csv, results.xlsx (never overwritten) |
 | `src/evaluate.py` | Step 6c → `reports/evaluation_<split>.json`, `errors_<split>.csv`: rules_high/any, llm_yes(/uncertain), hybrid; sample and design-weighted P/R/F1 with bootstrap CIs |
 | `src/extract_episodes.py` | Step 7: `--confirm-sheet --detector …` → `annotation/confirm_v1/`; then → `data/episodes/episodes.csv`, `episode_turns.parquet` |
@@ -120,6 +122,12 @@ compares a rule baseline with a local LLM. Its tables are read **read-only**, ne
     bit-deterministic. Report LLM results from one fixed run; don't mix runs.
   - vLLM start-up needs `VLLM_USE_FLASHINFER_SAMPLER=0` (FlashInfer JIT needs ninja + nvcc); `llm_screen.py` sets it.
 - [x] ChatGPT export of the 61 HIGH conversations + four-step prompt (`data/chatgpt/.../high_priority_v1/`).
+- [x] **Full dataset (2026-11-20)**, `data/full/`, see `data/SOURCE.md`: all items before 2026-09-01 of Transformers
+  (47,647), DeepSpeed (`deepspeedai/DeepSpeed`, 7,418) and Megatron-LM (6,819); Steps 1-4 with frozen rules_v1
+  (`prepare_threads.py` / `detect_rules.py --dataset full`; default `--dataset 10k` = the data everything else uses).
+  Groups: Transformers HIGH 244 · POSSIBLE 1,126 · RESOURCE_ONLY 3,153 · NO_MATCH 43,124; DeepSpeed 59 · 291 · 987 ·
+  6,081; Megatron-LM 56 · 304 · 638 · 5,821; **all: 359 · 1,721 · 4,778 · 55,026 = 61,884** (bot-only items, in
+  NO_MATCH: 153 / 76 / 139). The 61 HIGH of the 10k are all HIGH again. No screening done on it yet.
 - [ ] **Now:** ChatGPT runs on the 61 items → checks + researcher review → open coding (RQ1) and RQ2/RQ3 coding.
 - [ ] (Set aside, earlier path) two raters label 200 items → `agreement.py` → adjudicate → `--finalize` →
   `evaluate.py` (dev) → revise rules (v2) / prompt → `evaluate.py --split test` once → LLM on `--items pool` →

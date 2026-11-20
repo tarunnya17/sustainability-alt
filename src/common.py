@@ -32,8 +32,11 @@ REPORTS = ROOT / "reports"
 STRATA = ["HIGH_PRIORITY", "POSSIBLE_TRADEOFF", "RESOURCE_ONLY", "NO_MATCH"]
 LABELS = ["TRADEOFF", "RESOURCE_ONLY", "UNRELATED", "UNCERTAIN"]
 
-# Bot accounts that GitHub does not mark as bots (from the sibling's filter_discussions.py)
-KNOWN_BOTS = {"HuggingFaceDocBuilderDev"}
+# Bot accounts that GitHub does not mark as bots (from the sibling's filter_discussions.py), plus the ones found by
+# `combine_groups.py --bot-candidates` in the full dataset (none of them occurs in the 10k Transformers tables):
+#   svcnvidia-nemo-ci      NVIDIA's CI service account in Megatron-LM (3,454 comments: merge-queue and CI status)
+#   HuggingFaceDocBuilder  the older doc-build bot in Transformers (428 comments in 2022: "The docs for this PR live ...")
+KNOWN_BOTS = {"HuggingFaceDocBuilderDev", "HuggingFaceDocBuilder", "svcnvidia-nemo-ci"}
 
 
 def is_bot(df):
@@ -44,12 +47,32 @@ def sibling_tables(repo=REPO):
     return SIBLING / "data" / "tables" / repo
 
 
-def load_turns(repo=REPO):
-    return pd.read_parquet(THREADS / repo / "turns.parquet")
+# ---------- datasets ----------
+# "10k":  the sibling's 10,000 newest Transformers items (the pilot and ChatGPT work use this one)
+# "full": every issue/PR created before 2026-09-01 of the three repos, collected into data/full/ (src/run_full.sh)
+DATASETS = ["10k", "full"]
+FULL = ROOT / "data" / "full"
+FULL_REPOS = ["huggingface__transformers", "deepspeedai__DeepSpeed", "NVIDIA__Megatron-LM"]
 
 
-def load_conversations(repo=REPO):
-    return pd.read_parquet(THREADS / repo / "conversations.parquet")
+def source_tables(repo=REPO, dataset="10k"):
+    return sibling_tables(repo) if dataset == "10k" else FULL / "tables" / repo
+
+
+def threads_dir(dataset="10k"):
+    return THREADS if dataset == "10k" else FULL / "threads"
+
+
+def detect_dir(dataset="10k"):
+    return DETECT if dataset == "10k" else FULL / "detect"
+
+
+def load_turns(repo=REPO, dataset="10k"):
+    return pd.read_parquet(threads_dir(dataset) / repo / "turns.parquet")
+
+
+def load_conversations(repo=REPO, dataset="10k"):
+    return pd.read_parquet(threads_dir(dataset) / repo / "conversations.parquet")
 
 
 # ---------- sentences ----------
